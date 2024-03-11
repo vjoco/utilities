@@ -15,3 +15,5 @@ The nv12.img was captured with:
 camera settings was set with:
 - v4l2-ctl -d /dev/v4l-subdev2 --set-ctrl=exposure=200,analogue_gain=800,vertical_flip=1
 
+Result 
+ ![image](https://github.com/vjoco/utilities/assets/16479426/1ca85ea1-c476-4b54-9834-e0830f288da7)
