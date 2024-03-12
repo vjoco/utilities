@@ -1,7 +1,22 @@
 # A list of utilities
 
+## 1. capture luckfox 
 
-## 1. nv12 to rgb conversion for 'NV12' (Y/CbCr 4:2:0) format (as it comes from luckfox cameras)
+capture nv12 format and convert it to rgb bmp file!
+
+gcc cap_nv12.c  -o capluck
+
+Usage: ./capluck [options]
+
+Options:
+-d | --device name   Video device name [/dev/video11]
+-h | --help          Print this message
+-c | --count         Number of frames to grab [1]
+-w | --width         Frame width
+-v | --height        Frame height
+
+
+## 2. nv12 to rgb conversion for 'NV12' (Y/CbCr 4:2:0) format (as it comes from luckfox cameras)
 
 compilation (I use an alpine armv7 docker container with these packages: openssh git gcc musl-dev gd-dev make linux-headers)
 
