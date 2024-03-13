@@ -27,6 +27,11 @@
 
 #include <linux/videodev2.h>
 
+
+#include <dirent.h>
+
+
+
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 
 #define NUM_PLANES 1
@@ -55,6 +60,38 @@ static int frame_number = 0;
 static int img_width = 640;
 static int img_height = 480;
 static int status;
+
+int lastfile() {
+	int last=0;
+    DIR *dir;
+    struct dirent *ent;
+    int largest_index = -1;
+
+    if ((dir = opendir(".")) != NULL) {
+        while ((ent = readdir(dir)) != NULL) {
+            if (strstr(ent->d_name, "out-") != NULL && strstr(ent->d_name, ".bmp") != NULL) {
+                // Extract index from filename
+                char *index_str = strtok(ent->d_name, "-");
+                index_str = strtok(NULL, "-");
+                int index = atoi(index_str);
+                if (index > largest_index) {
+                    largest_index = index;
+                }
+            }
+        }
+        closedir(dir);
+        if (largest_index != -1) {
+          //  printf("The largest index is: %d\n", largest_index);
+		  last=largest_index;
+        } else {
+           // printf("No 'out-xxxxxx.bmp' files found.\n");
+		   last=0;
+        }
+    } 
+
+    return last;
+}
+
 
 // Function to convert YUV (NV12 or NV21) to RGB24
 void yuv_to_rgb24(unsigned char rgb[], unsigned char yuv[], int width, int height, size_t prerow, bool isNV12) {
@@ -144,7 +181,9 @@ static void process_image(const void *p, int size)
 {
         char filename[15];
 	frame_number++;
-        sprintf(filename, "out-%d.bmp", frame_number);
+     //   sprintf(savefile, "out-%d.bmp", frame_number);
+
+    
 
         // yuv_to_rgb24(unsigned char rgb[], unsigned char yuv[], int width, int height, size_t prerow, bool isNV12)
         // write_bmp(const char *filename, unsigned char *rgb_data, int width, int height)
@@ -153,7 +192,10 @@ static void process_image(const void *p, int size)
 
   yuv_to_rgb24(rgb_data, (unsigned char *) p, img_width, img_height, img_width, true);
 
-   write_bmp(filename, rgb_data, img_width, img_height);
+ int last=lastfile()+1;
+sprintf(savefile, "out-%06d.bmp", last);
+
+   write_bmp(savefile, rgb_data, img_width, img_height);
 
   /*      FILE *fp=fopen(filename,"wb");
  
