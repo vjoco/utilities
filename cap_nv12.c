@@ -23,6 +23,8 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 
+#include <stdbool.h>
+
 #include <linux/videodev2.h>
 
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
@@ -40,6 +42,9 @@ struct buffer {
 };
 
 static char dev_name[20];
+
+static char savefile[100];
+
 static char convertcmd[100];
 static int fd = -1;
 struct buffer *buffers;
@@ -50,6 +55,79 @@ static int frame_number = 0;
 static int img_width = 640;
 static int img_height = 480;
 static int status;
+
+// Function to convert YUV (NV12 or NV21) to RGB24
+void yuv_to_rgb24(unsigned char rgb[], unsigned char yuv[], int width, int height, size_t prerow, bool isNV12) {
+    int total = prerow * height;
+    int Y, U, V;
+    int R, G, B;
+    int index = 0;
+    
+    for (int h = 0; h < height; h++) {
+        unsigned char *yBufferLine = &yuv[h * prerow];
+        unsigned char *uvdataLine = &yuv[total + (h >> 1) * prerow];
+        
+        for (int w = 0; w < width; w++) {
+            Y = yBufferLine[w];
+            if (isNV12) {
+                U = uvdataLine[w & ~1];
+                V = uvdataLine[w | 1];
+            } else {
+                V = uvdataLine[w & ~1];
+                U = uvdataLine[w | 1];
+            }
+            
+            R = Y + 1.402 * (V - 128);
+            G = Y - 0.344 * (U - 128) - 0.714 * (V - 128);
+            B = Y + 1.772 * (U - 128);
+            
+            if (R < 0) R = 0; else if (R > 255) R = 255;
+            if (G < 0) G = 0; else if (G > 255) G = 255;
+            if (B < 0) B = 0; else if (B > 255) B = 255;
+            
+            rgb[index++] = (unsigned char)B;
+            rgb[index++] = (unsigned char)G;
+            rgb[index++] = (unsigned char)R;
+        }
+    }
+}
+
+// Function to write RGB24 data to a BMP file
+// Function to write RGB24 data to a BMP file
+void write_bmp(const char *filename, unsigned char *rgb_data, int width, int height) {
+    int filesize = 54 + 3 * width * height;
+    unsigned char bmpfileheader[14] = {'B', 'M', 0, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0};
+    unsigned char bmpinfoheader[40] = {40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 24, 0};
+    unsigned char bmppad[3] = {0, 0, 0};
+
+    bmpfileheader[2] = (unsigned char) (filesize);
+    bmpfileheader[3] = (unsigned char) (filesize >> 8);
+    bmpfileheader[4] = (unsigned char) (filesize >> 16);
+    bmpfileheader[5] = (unsigned char) (filesize >> 24);
+
+    bmpinfoheader[4] = (unsigned char) (width);
+    bmpinfoheader[5] = (unsigned char) (width >> 8);
+    bmpinfoheader[6] = (unsigned char) (width >> 16);
+    bmpinfoheader[7] = (unsigned char) (width >> 24);
+    bmpinfoheader[8] = (unsigned char) (height);
+    bmpinfoheader[9] = (unsigned char) (height >> 8);
+    bmpinfoheader[10] = (unsigned char) (height >> 16);
+    bmpinfoheader[11] = (unsigned char) (height >> 24);
+
+    FILE *file = fopen(filename, "wb");
+    fwrite(bmpfileheader, 1, 14, file);
+    fwrite(bmpinfoheader, 1, 40, file);
+    for (int i = 0; i < height; i++) {
+        fwrite(rgb_data + (width * (height - i - 1) * 3), 3, width, file);
+        fwrite(bmppad, 1, (4 - (width * 3) % 4) % 4, file);
+    }
+    fclose(file);
+}
+
+
+
+
+
 
 static int xioctl(int fh, int request, void *arg)
 {
@@ -66,13 +144,24 @@ static void process_image(const void *p, int size)
 {
         char filename[15];
 	frame_number++;
-        sprintf(filename, "frame-%d.raw", frame_number);
-        FILE *fp=fopen(filename,"wb");
+        sprintf(filename, "out-%d.bmp", frame_number);
+
+        // yuv_to_rgb24(unsigned char rgb[], unsigned char yuv[], int width, int height, size_t prerow, bool isNV12)
+        // write_bmp(const char *filename, unsigned char *rgb_data, int width, int height)
+    // i have the yuv data, but i still have to allocate for rgb data
+   unsigned char *rgb_data = (unsigned char *)malloc(img_width * img_height * 3);
+
+  yuv_to_rgb24(rgb_data, (unsigned char *) p, img_width, img_height, img_width, true);
+
+   write_bmp(filename, rgb_data, img_width, img_height);
+
+  /*      FILE *fp=fopen(filename,"wb");
  
 	fwrite(p, size, 1, fp);
 
         fflush(fp);
         fclose(fp);
+        */
 }
 
 static int read_frame(void)
@@ -335,17 +424,18 @@ static void usage(FILE *fp, int argc, char **argv)
                  "Options:\n"
                  "-d | --device name   Video device name [%s]\n"
                  "-h | --help          Print this message\n"
-                 "-c | --count         Number of frames to grab [%i]\n"
+                 "-f | file name to save\n"
                  "-w | --width         Frame width\n"
                  "-v | --height        Frame height\n"
                  "",
-                 argv[0], dev_name, frame_count);
+                 argv[0], dev_name);
 }
 
 int main(int argc, char **argv)
 {
 	int opt;
         strcpy(dev_name, "/dev/video11");
+		strcpy(savefile, "out-0001.bmp");
 
 	while((opt = getopt(argc, argv, ":d:c:w:hv:")) != -1)
 	{
@@ -360,9 +450,14 @@ int main(int argc, char **argv)
 			case 'o':
 				out_buf++;
 				break;
-			case 'c':
-				frame_count = atoi(optarg);
+		//	case 'c':
+		//		frame_count = atoi(optarg);
+		//		break;
+				case 'f':
+				strcpy(savefile, optarg);
+
 				break;
+
 			case 'w':
 				img_width = atoi(optarg);
 				break;
@@ -393,6 +488,13 @@ int main(int argc, char **argv)
 	//convert -size 2112x1568 -depth 8 gray:frame-2.raw sme1.png
 	printf("\nRaw capture completed ... \n");
 	printf("\nConverting to greyscale... may take a while...\n\n");
+
+// convert
+
+
+
+
+#if 0    
 	while(frame_count > 0)
 	{
 		sprintf(convertcmd, "convert -size %dx%d -depth 8 gray:frame-%d.raw image-%d.png",
@@ -407,6 +509,8 @@ int main(int argc, char **argv)
 	}
 	
 	printf("\ngreyscale processing completed.\n\n");
+#endif
+
 
         fprintf(stderr, "\n");
         return 0;
