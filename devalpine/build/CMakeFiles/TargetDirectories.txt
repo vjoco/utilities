@@ -1,0 +1,3 @@
+/data/build/CMakeFiles/cc1.dir
+/data/build/CMakeFiles/edit_cache.dir
+/data/build/CMakeFiles/rebuild_cache.dir
